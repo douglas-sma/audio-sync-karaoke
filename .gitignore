@@ -1,0 +1,67 @@
+# Entorno virtual de Python
+venv/
+env/
+.env
+.venv/
+
+# Archivos de audio (no subir archivos multimedia grandes)
+*.mp3
+*.wav
+*.flac
+*.aac
+*.m4a
+*.ogg
+*.wma
+*.aiff
+*.au
+
+# Directorios de salida
+output/
+karaoke_output/
+audio_output/
+vocal_output/
+sync_output/
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Archivos de configuración local
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Archivos de audio de prueba (mantener estructura pero no archivos)
+!audio/.gitkeep
