@@ -12,6 +12,8 @@ import argparse
 import os
 import subprocess
 from pathlib import Path
+from mutagen import File as MutagenFile
+from mutagen.mp4 import MP4
 
 class AudioSynchronizer:
     def __init__(self, vocal_file, instrumental_file, output_dir="output"):
@@ -180,51 +182,184 @@ class AudioSynchronizer:
     
     def save_high_quality_audio(self, audio, filename):
         """
-        Guarda audio en alta calidad (preservando mono/estéreo)
+        Guarda audio en alta calidad en formato M4A (preservando mono/estéreo)
         """
-        output_path = self.output_dir / filename
+        # Crear archivo WAV temporal
+        temp_wav_path = self.output_dir / "temp_output.wav"
+        output_path = self.output_dir / Path(filename).with_suffix('.m4a')
         
         # Preparar audio para guardado
         if audio.ndim == 2:
             # Audio estéreo - transponer para soundfile (samples, channels)
             audio_to_save = audio.T
-            print(f"Guardando audio ESTÉREO: {output_path}")
+            print(f"Procesando audio ESTÉREO...")
         else:
             # Audio mono
             audio_to_save = audio
-            print(f"Guardando audio MONO: {output_path}")
+            print(f"Procesando audio MONO...")
         
-        # Guardar como WAV sin compresión para máxima calidad
-        sf.write(output_path, audio_to_save, self.sample_rate, subtype='PCM_24')
+        # Guardar WAV temporal
+        sf.write(temp_wav_path, audio_to_save, self.sample_rate, subtype='PCM_24')
         
-        # También crear versión MP3 de alta calidad
-        mp3_path = output_path.with_suffix('.mp3')
-        self.convert_to_mp3(output_path, mp3_path)
+        # Convertir a M4A de alta calidad
+        self.convert_to_m4a(temp_wav_path, output_path)
+        
+        # Eliminar archivo WAV temporal
+        if temp_wav_path.exists():
+            os.remove(temp_wav_path)
         
         return output_path
     
-    def convert_to_mp3(self, wav_path, mp3_path):
+    def convert_to_m4a(self, wav_path, m4a_path):
         """
-        Convierte WAV a MP3 de alta calidad usando FFmpeg
+        Convierte WAV a M4A (AAC) de alta calidad usando FFmpeg
         """
         try:
             cmd = [
                 'ffmpeg', '-i', str(wav_path),
-                '-codec:a', 'libmp3lame',
-                '-b:a', '320k',  # Bitrate máximo
-                '-q:a', '0',     # Calidad máxima
+                '-codec:a', 'aac',
+                '-b:a', '256k',  # Bitrate alto para AAC
+                '-q:a', '2',     # Calidad alta
                 '-y',            # Sobrescribir
-                str(mp3_path)
+                str(m4a_path)
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
-                print(f"MP3 creado: {mp3_path}")
+                print(f"M4A creado: {m4a_path}")
             else:
-                print(f"Error creando MP3: {result.stderr}")
+                print(f"Error creando M4A: {result.stderr}")
                 
         except FileNotFoundError:
             print("FFmpeg no encontrado. Instala con: sudo apt install ffmpeg")
+    
+    def copy_metadata_with_sync_title(self, source_file, dest_file):
+        """
+        Copia los metadatos del archivo original al archivo sincronizado
+        y agrega 'Sincronizado' al título
+        """
+        try:
+            # Leer metadatos del archivo original
+            source_audio = MutagenFile(source_file)
+            if source_audio is None:
+                print(f"No se pudieron leer metadatos de: {source_file}")
+                return
+            
+            # Abrir archivo de destino (M4A/MP4)
+            dest_audio = MP4(dest_file)
+            
+            # Mapeo de tags comunes entre formatos
+            # Tags MP4 usan el formato iTunes
+            mp4_tags_map = {
+                'title': '\xa9nam',
+                'artist': '\xa9ART',
+                'album': '\xa9alb',
+                'albumartist': 'aART',
+                'date': '\xa9day',
+                'genre': '\xa9gen',
+                'composer': '\xa9wrt',
+                'comment': '\xa9cmt',
+                'tracknumber': 'trkn',
+                'discnumber': 'disk',
+            }
+            
+            original_title = None
+            
+            # Copiar metadatos según el tipo de archivo fuente
+            if hasattr(source_audio, 'tags') and source_audio.tags:
+                tags = source_audio.tags
+                
+                # Intentar obtener título del archivo original
+                # Para archivos MP3 (ID3)
+                if hasattr(tags, 'getall'):
+                    title_tags = tags.getall('TIT2')
+                    if title_tags:
+                        original_title = str(title_tags[0])
+                    
+                    # Copiar tags ID3 a MP4
+                    id3_to_mp4 = {
+                        'TIT2': '\xa9nam',  # Título
+                        'TPE1': '\xa9ART',  # Artista
+                        'TALB': '\xa9alb',  # Álbum
+                        'TPE2': 'aART',     # Artista del álbum
+                        'TDRC': '\xa9day',  # Fecha
+                        'TCON': '\xa9gen',  # Género
+                        'TCOM': '\xa9wrt',  # Compositor
+                    }
+                    
+                    for id3_tag, mp4_tag in id3_to_mp4.items():
+                        try:
+                            values = tags.getall(id3_tag)
+                            if values:
+                                dest_audio[mp4_tag] = [str(values[0])]
+                        except:
+                            pass
+                
+                # Para archivos FLAC, OGG, etc. (Vorbis Comments)
+                elif isinstance(tags, dict) or hasattr(tags, 'items'):
+                    for key, value in tags.items():
+                        key_lower = key.lower() if isinstance(key, str) else str(key).lower()
+                        
+                        if 'title' in key_lower:
+                            if isinstance(value, list):
+                                original_title = value[0]
+                            else:
+                                original_title = str(value)
+                        
+                        # Mapear tags de Vorbis a MP4
+                        vorbis_to_mp4 = {
+                            'title': '\xa9nam',
+                            'artist': '\xa9ART',
+                            'album': '\xa9alb',
+                            'albumartist': 'aART',
+                            'date': '\xa9day',
+                            'genre': '\xa9gen',
+                            'composer': '\xa9wrt',
+                        }
+                        
+                        for vorbis_key, mp4_tag in vorbis_to_mp4.items():
+                            if vorbis_key in key_lower:
+                                try:
+                                    if isinstance(value, list):
+                                        dest_audio[mp4_tag] = [str(value[0])]
+                                    else:
+                                        dest_audio[mp4_tag] = [str(value)]
+                                except:
+                                    pass
+                
+                # Para archivos M4A/MP4 ya existentes
+                elif hasattr(source_audio, 'get'):
+                    if '\xa9nam' in source_audio:
+                        original_title = source_audio['\xa9nam'][0]
+                    
+                    # Copiar todos los tags directamente
+                    for tag in mp4_tags_map.values():
+                        if tag in source_audio:
+                            try:
+                                dest_audio[tag] = source_audio[tag]
+                            except:
+                                pass
+                    
+                    # Copiar carátula si existe
+                    if 'covr' in source_audio:
+                        dest_audio['covr'] = source_audio['covr']
+            
+            # Modificar el título agregando "Sincronizado"
+            if original_title:
+                new_title = f"{original_title} (Sincronizado)"
+            else:
+                # Si no hay título, usar el nombre del archivo
+                original_name = Path(self.vocal_file).stem
+                new_title = f"{original_name} (Sincronizado)"
+            
+            dest_audio['\xa9nam'] = [new_title]
+            
+            # Guardar cambios
+            dest_audio.save()
+            print(f"Metadatos copiados. Nuevo título: {new_title}")
+            
+        except Exception as e:
+            print(f"Error copiando metadatos: {e}")
     
     def create_karaoke_mix(self, synchronized_vocal, instrumental):
         """
@@ -298,12 +433,16 @@ class AudioSynchronizer:
         
         # Guardar solo el vocal sincronizado
         print("\nGuardando archivo vocal sincronizado...")
-        self.save_high_quality_audio(enhanced_vocal, "vocal_sincronizado.wav")
+        output_path = self.save_high_quality_audio(enhanced_vocal, "vocal_sincronizado.wav")
+        
+        # Copiar metadatos del archivo original y modificar título
+        print("\nCopiando metadatos del archivo original...")
+        self.copy_metadata_with_sync_title(self.vocal_file, output_path)
         
         print(f"\n✅ Sincronización completada!")
         print(f"📁 Archivo guardado en: {self.output_dir}")
         print(f"⏱️  Offset aplicado: {offset_seconds:.3f} segundos")
-        print(f"🎵 Archivo listo: vocal_sincronizado.mp3")
+        print(f"🎵 Archivo listo: vocal_sincronizado.m4a")
         
         return True
 

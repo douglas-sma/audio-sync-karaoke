@@ -5,19 +5,19 @@ echo "=============================="
 echo
 
 # Verificar que los archivos existen
-if [ ! -f "audio/audio.mp3" ]; then
-    echo "❌ Error: No se encuentra audio/audio.mp3"
+if [ ! -f "audio/vocal.m4a" ]; then
+    echo "❌ Error: No se encuentra audio/vocal.m4a"
     exit 1
 fi
 
-if [ ! -f "audio/instrumental.mp3" ]; then
-    echo "❌ Error: No se encuentra audio/instrumental.mp3"
+if [ ! -f "audio/instrumental.m4a" ]; then
+    echo "❌ Error: No se encuentra audio/instrumental.m4a"
     exit 1
 fi
 
 echo "✅ Archivos encontrados:"
-echo "   - Vocal: audio/audio.mp3"
-echo "   - Instrumental: audio/instrumental.mp3"
+echo "   - Vocal: audio/vocal.m4a"
+echo "   - Instrumental: audio/instrumental.m4a"
 echo
 
 # Verificar que el entorno virtual existe
@@ -29,7 +29,7 @@ fi
 # Ejecutar sincronización
 echo "🔄 Iniciando sincronización..."
 source venv/bin/activate
-python sync_audio.py --vocal audio/audio.mp3 --instrumental audio/instrumental.mp3 --output karaoke_output
+python sync_audio.py --vocal audio/vocal.m4a --instrumental audio/instrumental.m4a --output karaoke_output
 deactivate
 
 if [ $? -eq 0 ]; then
